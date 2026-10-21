@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>बीड जिल्हा परिषद - ओएमआर स्कॅनर व आन्सर की डॅशबोर्ड</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-100 p-4 flex flex-col items-center min-h-screen">
+
+    <div class="max-w-md w-full bg-white p-6 rounded-xl shadow-md">
+        
+        <!-- हेडर आणि ॲडमिन लॉक बटण -->
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <div>
+                <h2 class="text-lg font-bold text-blue-800">ओएमआर स्कॅनर</h2>
+                <p class="text-[10px] text-gray-500">बीड जिल्हा परिषद शिक्षण विभाग</p>
+            </div>
+            <button onclick="openAdminPanel()" class="bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-bold shadow hover:bg-black">
+                🔐 ॲडमिन (आन्सर की)
+            </button>
+        </div>
+
+        <!-- मुख्य स्कॅनिंग डॅशबोर्ड -->
+        <div id="scanner-section">
+            <p class="text-xs text-gray-600 mb-3 text-center">शीटचे चार कोपरे फ्रेममध्ये आणा आणि स्कॅन करा</p>
+
+            <div class="relative w-full h-64 bg-black rounded-xl overflow-hidden mb-4 flex items-center justify-center border-2 border-dashed border-blue-400">
+                <video id="videoFeed" autoplay playsinline class="w-full h-full object-cover"></video>
+                <div class="absolute bottom-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded">
+                    ४ कोपरे फ्रेममध्ये ठेवा
+                </div>
+            </div>
+
+            <button onclick="captureAndProcess()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold shadow mb-4 text-sm">
+                📸 ओएमआर स्कॅन करा
+            </button>
+
+            <!-- निकाल बॉक्स -->
+            <div id="result-box" class="hidden space-y-2 text-left bg-gray-50 p-3 rounded-xl border border-gray-200 text-sm">
+                <div class="flex justify-between items-center border-b pb-1.5">
+                    <span class="font-semibold text-green-700">✅ बरोबर प्रश्न:</span>
+                    <span id="correctCount" class="font-bold text-green-700 text-base">0</span>
+                </div>
+                <div class="flex justify-between items-center border-b pb-1.5">
+                    <span class="font-semibold text-red-600">❌ चुकीचे प्रश्न:</span>
+                    <span id="wrongCount" class="font-bold text-red-600 text-base">0</span>
+                </div>
+                <div class="flex justify-between items-center pt-1">
+                    <span class="font-bold text-blue-900">⭐ एकूण गुण:</span>
+                    <span id="totalMarks" class="font-extrabold text-blue-900 text-lg">0 / 80</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ॲडमिन पॅनेल (सुरक्षित पासवर्ड द्वारे उघडेल) -->
+        <div id="admin-section" class="hidden">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-bold text-blue-900 text-sm">⚙️ मास्टर आन्सर की सेटिंग</h3>
+                <button onclick="closeAdminPanel()" class="text-red-600 font-bold text-xs">✖ बंद करा</button>
+            </div>
+            
+            <div class="bg-blue-50 p-3 rounded-lg mb-3 border border-blue-200">
+                <label class="block text-xs font-bold text-blue-900 mb-1">सर्व ८० प्रश्नांची उत्तरे सलग पेस्ट करा (उदा. ABCD...):</label>
+                <textarea id="stringKeyInput" rows="3" class="w-full border p-2 rounded text-xs uppercase bg-white" placeholder="येथे सलग ८० अक्षरे टाका (उदा. ABCD..."></textarea>
+                <button onclick="saveStringKey()" class="mt-2 w-full bg-green-600 text-white py-1.5 rounded font-bold text-xs hover:bg-green-700">सलग स्ट्रिंगवरून की सेव्ह करा</button>
+            </div>
+
+            <div class="text-center text-xs font-bold text-gray-500 my-2">- किंवा -</div>
+
+            <p class="text-[11px] text-gray-500 mb-2">तपशीलवार एकामागून एक तपासा:</p>
+            <div id="answer-inputs" class="space-y-2 max-h-52 overflow-y-auto border p-2 rounded mb-3 text-xs">
+                <!-- JavaScript द्वारे प्रश्न जनरेट होतील -->
+            </div>
+
+            <button onclick="saveAnswerKey()" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700 font-bold text-xs">तपशीलवार बदल सेव्ह करा</button>
+            <p id="msg" class="text-green-600 mt-2 text-center font-semibold text-xs"></p>
+        </div>
+
+    </div>
+
+    <script>
+        // कॅमेरा चालू करणे
+        const video = document.getElementById('videoFeed');
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => { console.log("कॅमेरा एरर: ", err); });
+
+        // ८० प्रश्नांचे ऑप्शन्स ॲडमिनसाठी तयार करणे
+        const container = document.getElementById('answer-inputs');
+        for(let i=1; i<=80; i++) {
+            container.innerHTML += `
+                <div class="flex items-center justify-between border-b pb-1">
+                    <span class="font-semibold text-gray-700">प्रश्न ${i}:</span>
+                    <select id="q${i}" class="border p-1 rounded w-24 bg-gray-50 text-xs">
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                    </select>
+                </div>
+            `;
+        }
+
+        // पासवर्ड सुरक्षा देऊन ॲडमिन पॅनेल उघडणे
+        function openAdminPanel() {
+            let pin = prompt("कृपया ॲडमिन गुप्त पासवर्ड प्रविष्ट करा:");
+            
+            if (pin === "Beed@2026") { // तुमचा गुप्त पासवर्ड
+                document.getElementById('scanner-section').classList.add('hidden');
+                document.getElementById('admin-section').classList.remove('hidden');
+                loadExistingKey();
+            } else if (pin !== null) {
+                alert("चुकीचा पासवर्ड! ॲडमिन पॅनेल उघडता येणार नाही.");
+            }
+        }
+
+        function closeAdminPanel() {
+            document.getElementById('admin-section').classList.add('hidden');
+            document.getElementById('scanner-section').classList.remove('hidden');
+        }
+
+        function loadExistingKey() {
+            let saved = localStorage.getItem('masterAnswerKey');
+            if(saved) {
+                let keyData = JSON.parse(saved);
+                let str = "";
+                for(let i=1; i<=80; i++) {
+                    let val = keyData[i] || "A";
+                    document.getElementById(`q${i}`).value = val;
+                    str += val;
+                }
+                document.getElementById('stringKeyInput').value = str;
+            }
+        }
+
+        // सलग स्ट्रिंगवरून आन्सर की सेव्ह करणे
+        function saveStringKey() {
+            let rawStr = document.getElementById('stringKeyInput').value.trim().toUpperCase();
+            // फक्त A, B, C, D अक्षरे फिल्टर करणे
+            let cleanStr = rawStr.replace(/[^ABCD]/g, '');
+
+            if(cleanStr.length < 80) {
+                alert(`लक्ष द्या: तुम्ही टाकलेली अक्षरे फक्त ${cleanStr.length} आहेत. कृपया अचूक ८० अक्षरांची स्ट्रिंग टाका!`);
+                return;
+            }
+
+            let answerKey = {};
+            for(let i=0; i<80; i++) {
+                let qNum = i + 1;
+                let char = cleanStr[i];
+                answerKey[qNum] = char;
+                document.getElementById(`q${qNum}`).value = char; // खालील ड्रॉपडाऊन पण अपडेट होईल
+            }
+
+            localStorage.setItem('masterAnswerKey', JSON.stringify(answerKey));
+            document.getElementById('msg').innerText = "सलग स्ट्रिंगनुसार आन्सर की यशस्वीरीत्या सेव्ह झाली!";
+        }
+
+        // तपशीलवार आन्सर की सेव्ह करणे
+        function saveAnswerKey() {
+            let answerKey = {};
+            let str = "";
+            for(let i=1; i<=80; i++) {
+                let val = document.getElementById(`q${i}`).value;
+                answerKey[i] = val;
+                str += val;
+            }
+            localStorage.setItem('masterAnswerKey', JSON.stringify(answerKey));
+            document.getElementById('stringKeyInput').value = str;
+            document.getElementById('msg').innerText = "आन्सर की यशस्वीरीत्या सेव्ह झाली!";
+        }
+
+        // स्कॅनिंग प्रक्रिया
+        function captureAndProcess() {
+            const savedKey = localStorage.getItem('masterAnswerKey');
+            if(!savedKey) {
+                alert('कृपया आधी ॲडमिन पासवर्ड टाकून मास्टर आन्सर की सेट करा!');
+                return;
+            }
+
+            setTimeout(() => {
+                let totalQ = 80;
+                let correct = Math.floor(Math.random() * 20) + 60; // डेमो गुण
+                let wrong = totalQ - correct;
+
+                document.getElementById('correctCount').innerText = correct;
+                document.getElementById('wrongCount').innerText = wrong;
+                document.getElementById('totalMarks').innerText = `${correct} / ${totalQ}`;
+                document.getElementById('result-box').classList.remove('hidden');
+            }, 600);
+        }
+    </script>
+</body>
+</html>
